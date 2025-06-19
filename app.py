@@ -1,43 +1,33 @@
 import streamlit as st
-from src.helper import get_pdf_text, get_text_chunks, get_vector_store, get_conversational_chain
+import tempfile
+import os
+from dotenv import load_dotenv
+from src.helper import get_pdf_text_with_langchain, get_text_chunks, setup_chain
 
+load_dotenv()
 
+st.set_page_config(page_title="PDF Chat with Gemini", layout="centered")
+st.title("📄 Chat with your PDF using Gemini")
 
-def user_input(user_question):
-    response = st.session_state.conversation({'question': user_question})
-    st.session_state.chatHistory = response['chat_history']
-    for i, message in enumerate(st.session_state.chatHistory):
-        if i%2 == 0:
-            st.write("User: ", message.content)
-        else:
-            st.write("Reply: ", message.content)
+uploaded_file = st.file_uploader("Upload a PDF file", type="pdf")
 
+if uploaded_file:
+    with tempfile.NamedTemporaryFile(delete=False, suffix=".pdf") as tmp_file:
+        tmp_file.write(uploaded_file.read())
+        tmp_path = tmp_file.name
 
-def main():
-    st.set_page_config("Information Retrieval")
-    st.header("Information Retrieval System💁")
+    with st.spinner("Processing PDF..."):
+        text = get_pdf_text_with_langchain(tmp_path)
+        chunks = get_text_chunks(text)
+        chain = setup_chain(chunks)
+        st.success("PDF is ready! Ask your questions below.")
 
-    user_question = st.text_input("Ask a Question from the PDF Files")
+    os.remove(tmp_path)
 
-    if "conversation" not in st.session_state:
-        st.session_state.conversation = None
-    if "chatHistory" not in st.session_state:
-        st.session_state.chatHistory = None
-    if user_question:
-        user_input(user_question)
+    query = st.text_input("Ask a question about the PDF:")
 
-    with st.sidebar:
-        st.title("Menu:")
-        pdf_docs = st.file_uploader("Upload your PDF Files and Click on the Submit & Process Button", accept_multiple_files=True)
-        if st.button("Submit & Process"):
-            with st.spinner("Processing..."):
-                raw_text = get_pdf_text(pdf_docs)
-                text_chunks = get_text_chunks(raw_text)
-                vector_store = get_vector_store(text_chunks)
-                st.session_state.conversation = get_conversational_chain(vector_store)
-                st.success("Done")
-
-
-
-if __name__ == "__main__":
-    main()
+    if query:
+        with st.spinner("Generating answer..."):
+            answer = chain.invoke(query)
+            st.markdown("### 💬 Answer:")
+            st.write(answer)
